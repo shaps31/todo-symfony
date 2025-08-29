@@ -1,21 +1,26 @@
+{# templates/task/index.html.twig #}
 {% extends 'base.html.twig' %}
+
 {% block body %}
     <h1 class="mb-3">Mes tâches</h1>
 
-    <form method="get" class="row g-2 align-items-center mb-3">
-        <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
-            <input name="q" value="{{ filters.q }}" class="form-control" style="max-width: 240px" placeholder="Recherche">
-            <select name="status" class="form-select" style="max-width: 120px">
+    <form method="get" class="mb-3">
+        <div class="d-flex align-items-center flex-wrap gap-2">
+            <input name="q" value="{{ filters.q }}" class="form-control" style="max-width:240px" placeholder="Recherche">
+
+            <select name="status" class="form-select" style="max-width:120px">
                 <option value="">--</option>
                 <option value="todo"  {{ filters.status == 'todo'  ? 'selected' }}>todo</option>
                 <option value="doing" {{ filters.status == 'doing' ? 'selected' }}>doing</option>
                 <option value="done"  {{ filters.status == 'done'  ? 'selected' }}>done</option>
             </select>
-            <select name="sort" class="form-select" style="max-width: 140px">
+
+            <select name="sort" class="form-select" style="max-width:140px">
                 <option value="dueAt"     {{ filters.sort == 'dueAt' ? 'selected' }}>Deadline</option>
                 <option value="createdAt" {{ filters.sort == 'createdAt' ? 'selected' }}>Création</option>
             </select>
-            <select name="dir" class="form-select" style="max-width: 110px">
+
+            <select name="dir" class="form-select" style="max-width:110px">
                 <option value="DESC" {{ filters.dir == 'DESC' ? 'selected' }}>Desc</option>
                 <option value="ASC"  {{ filters.dir == 'ASC'  ? 'selected' }}>Asc</option>
             </select>
@@ -33,39 +38,61 @@
                 Export CSV
             </a>
         </div>
-
-
     </form>
 
-
-    <ul class="list-group">
+    {# --- LISTE DES TÂCHES --- #}
+    <ul class="list-group shadow-sm">
         {% for t in tasks %}
-            {# mapping classes #}
             {% set clsStatus = {'todo':'bg-secondary','doing':'bg-info text-dark','done':'bg-success'}[t.status]|default('bg-secondary') %}
             {% set clsPrio   = {'low':'bg-secondary','med':'bg-warning text-dark','high':'bg-danger'}[t.priority]|default('bg-secondary') %}
             {% set overdue   = t.dueAt and t.status != 'done' and t.dueAt|date('U') < 'now'|date('U') %}
 
-            <div class="d-flex justify-content-between">
-                <div>
-                    <strong>{{ t.title }}</strong>
-                    <span class="badge {{ clsStatus }} ms-1">{{ t.status }}</span>
-                    <span class="badge {{ clsPrio }} ms-1">prio {{ t.priority }}</span>
-                    {% if overdue %}
-                        <span class="badge bg-danger ms-1">en retard</span>
-                    {% endif %}
-                    <div class="small text-muted mt-1">
-                        {% if t.dueAt %}Échéance : {{ t.dueAt|date('Y-m-d H:i') }}{% else %}Pas d’échéance{% endif %}
+            <li class="list-group-item d-flex justify-content-between align-items-start">
+                <div class="ms-2 me-auto">
+                    <div class="fw-semibold">
+                        {{ t.title }}
+                        <span class="badge {{ clsStatus }} ms-1 text-uppercase">{{ t.status }}</span>
+                        <span class="badge {{ clsPrio }} ms-1">prio {{ t.priority }}</span>
+                        {% if overdue %}
+                            <span class="badge bg-danger ms-1">en retard</span>
+                        {% endif %}
                     </div>
-                    <div class="small">{{ t.description|default('') }}</div>
+
+                    <small class="text-body-secondary d-block">
+                        {{ t.dueAt ? 'Échéance : ' ~ t.dueAt|date('Y-m-d H:i') : 'Pas d’échéance' }}
+                    </small>
+
+                    {% if t.description %}
+                        <div class="small mt-1">{{ t.description }}</div>
+                    {% endif %}
                 </div>
-                <div class="text-nowrap">
-                    <a class="btn btn-sm btn-outline-primary" href="{{ path('task_edit', {id: t.id}) }}">Éditer</a>
+
+                <div class="btn-group btn-group-sm">
+                    <a class="btn btn-outline-primary" href="{{ path('task_edit', {id: t.id}) }}">Éditer</a>
                     {% include 'task/_delete_form.html.twig' with { task: t } %}
                 </div>
-            </div>
-
+            </li>
         {% else %}
-            <li class="list-group-item">Aucune tâche</li>
+            <li class="list-group-item text-center text-muted py-5">Aucune tâche</li>
         {% endfor %}
     </ul>
+
+    {# --- PAGINATION --- #}
+    {% if pages is defined and pages > 1 %}
+        <nav class="mt-3">
+            <ul class="pagination">
+                <li class="page-item {{ page == 1 ? 'disabled' }}">
+                    <a class="page-link" href="{{ path('task_index', filters|merge({'page': page-1})) }}">«</a>
+                </li>
+                {% for p in 1..pages %}
+                    <li class="page-item {{ p == page ? 'active' }}">
+                        <a class="page-link" href="{{ path('task_index', filters|merge({'page': p})) }}">{{ p }}</a>
+                    </li>
+                {% endfor %}
+                <li class="page-item {{ page == pages ? 'disabled' }}">
+                    <a class="page-link" href="{{ path('task_index', filters|merge({'page': page+1})) }}">»</a>
+                </li>
+            </ul>
+        </nav>
+    {% endif %}
 {% endblock %}
