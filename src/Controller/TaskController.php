@@ -11,6 +11,7 @@ use App\Message\SendTaskReminderEmailMessage;          // 👈 NEW
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Contracts\Cache\ItemInterface;
@@ -156,6 +157,45 @@ final class TaskController extends AbstractController
 
         return $this->render('task/edit.html.twig', ['form' => $form->createView(), 'task' => $task]);
     }
+
+
+
+    #[Route('/tasks/export.csv', name: 'task_export', methods: ['GET'])]
+    public function export(Request $r, TaskRepository $repo): Response
+    {
+        $this->denyAccessUnlessGranted('IS_AUTHENTICATED_FULLY');
+
+        $filters = [
+            'status'  => $r->query->get('status'),
+            'q'       => $r->query->get('q'),
+            'overdue' => (bool) $r->query->get('overdue'),
+            'sort'    => $r->query->get('sort', 'dueAt'),
+            'dir'     => $r->query->get('dir', 'DESC'),
+        ];
+
+        // on exporte “beaucoup” (ajuste si besoin)
+        $items = $repo->searchFor($this->getUser(), $filters, 1, 5000);
+
+        $response = new StreamedResponse(function () use ($items) {
+            $out = fopen('php://output', 'w');
+            fputcsv($out, ['Title', 'Status', 'Priority', 'DueAt']);
+            foreach ($items as $t) {
+                fputcsv($out, [
+                    $t->getTitle(),
+                    $t->getStatus(),
+                    $t->getPriority(),
+                    $t->getDueAt()?->format('Y-m-d H:i'),
+                ]);
+            }
+            fclose($out);
+        });
+
+        $response->headers->set('Content-Type', 'text/csv; charset=utf-8');
+        $response->headers->set('Content-Disposition', 'attachment; filename="tasks.csv"');
+
+        return $response;
+    }
+
 
     #[Route('/tasks/{id}', name: 'task_delete', methods: ['POST'])]
     public function delete(Task $task, Request $request): Response

@@ -3,43 +3,38 @@
     <h1 class="mb-3">Mes tâches</h1>
 
     <form method="get" class="row g-2 align-items-center mb-3">
-        <div class="col-auto">
-            <input name="q" class="form-control" placeholder="Recherche" value="{{ filters.q }}">
-        </div>
-
-        <div class="col-auto">
-            <select name="status" class="form-select">
+        <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
+            <input name="q" value="{{ filters.q }}" class="form-control" style="max-width: 240px" placeholder="Recherche">
+            <select name="status" class="form-select" style="max-width: 120px">
                 <option value="">--</option>
-                {% for s in ['todo','doing','done'] %}
-                    <option value="{{ s }}" {{ s==filters.status?'selected':'' }}>{{ s }}</option>
-                {% endfor %}
+                <option value="todo"  {{ filters.status == 'todo'  ? 'selected' }}>todo</option>
+                <option value="doing" {{ filters.status == 'doing' ? 'selected' }}>doing</option>
+                <option value="done"  {{ filters.status == 'done'  ? 'selected' }}>done</option>
             </select>
-        </div>
-
-        <div class="col-auto">
-            <select name="sort" class="form-select">
-                <option value="dueAt" {{ filters.sort=='dueAt'?'selected':'' }}>Deadline</option>
-                <option value="createdAt" {{ filters.sort=='createdAt'?'selected':'' }}>Création</option>
+            <select name="sort" class="form-select" style="max-width: 140px">
+                <option value="dueAt"     {{ filters.sort == 'dueAt' ? 'selected' }}>Deadline</option>
+                <option value="createdAt" {{ filters.sort == 'createdAt' ? 'selected' }}>Création</option>
             </select>
-        </div>
-
-        <div class="col-auto">
-            <select name="dir" class="form-select">
-                <option value="DESC" {{ filters.dir=='DESC'?'selected':'' }}>Desc</option>
-                <option value="ASC"  {{ filters.dir=='ASC'?'selected':'' }}>Asc</option>
+            <select name="dir" class="form-select" style="max-width: 110px">
+                <option value="DESC" {{ filters.dir == 'DESC' ? 'selected' }}>Desc</option>
+                <option value="ASC"  {{ filters.dir == 'ASC'  ? 'selected' }}>Asc</option>
             </select>
-        </div>
 
-        <div class="col-auto form-check">
-            <input class="form-check-input" type="checkbox" name="overdue" value="1"
-                   id="overdue" {{ filters.overdue ? 'checked' : '' }}>
-            <label class="form-check-label" for="overdue">En retard</label>
-        </div>
+            <div class="form-check ms-2">
+                <input class="form-check-input" type="checkbox" id="overdue" name="overdue" value="1" {{ filters.overdue ? 'checked' }}>
+                <label class="form-check-label" for="overdue">En retard</label>
+            </div>
 
-        <div class="col-auto">
-            <a class="btn btn-success" href="{{ path('task_new') }}">+ Créer une tâche</a>
+            <a href="{{ path('task_new') }}" class="btn btn-success">+ Créer une tâche</a>
             <button class="btn btn-primary">Filtrer</button>
+
+            <a class="btn btn-outline-secondary ms-auto"
+               href="{{ path('task_export', {'_query': filters}) }}">
+                Export CSV
+            </a>
         </div>
+
+
     </form>
 
 
