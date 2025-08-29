@@ -40,44 +40,62 @@
         </div>
     </form>
 
-    {# --- LISTE DES TÂCHES --- #}
-    <ul class="list-group shadow-sm">
-        {% for t in tasks %}
-            {% set clsStatus = {'todo':'bg-secondary','doing':'bg-info text-dark','done':'bg-success'}[t.status]|default('bg-secondary') %}
-            {% set clsPrio   = {'low':'bg-secondary','med':'bg-warning text-dark','high':'bg-danger'}[t.priority]|default('bg-secondary') %}
-            {% set overdue   = t.dueAt and t.status != 'done' and t.dueAt|date('U') < 'now'|date('U') %}
+    <div class="table-responsive shadow-sm">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+            <tr>
+                <th style="width:45%">Titre</th>
+                <th style="width:15%">Statut</th>
+                <th style="width:10%">Priorité</th>
+                <th style="width:20%">Échéance</th>
+                <th class="text-end" style="width:10%">Actions</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for t in tasks %}
+                {% set clsStatus = {'todo':'bg-secondary','doing':'bg-info text-dark','done':'bg-success'}[t.status]|default('bg-secondary') %}
+                {% set clsPrio   = {'low':'bg-secondary','med':'bg-warning text-dark','high':'bg-danger'}[t.priority]|default('bg-secondary') %}
+                {% set overdue   = t.dueAt and t.status != 'done' and t.dueAt|date('U') < 'now'|date('U') %}
 
-            <li class="list-group-item d-flex justify-content-between align-items-start">
-                <div class="ms-2 me-auto">
-                    <div class="fw-semibold">
-                        {{ t.title }}
-                        <span class="badge {{ clsStatus }} ms-1 text-uppercase">{{ t.status }}</span>
-                        <span class="badge {{ clsPrio }} ms-1">prio {{ t.priority }}</span>
-                        {% if overdue %}
-                            <span class="badge bg-danger ms-1">en retard</span>
+                <tr class="{{ t.status == 'done' ? 'table-light' }}">
+                    <td>
+                        <div class="fw-semibold">{{ t.title }}</div>
+                        {% if t.description %}
+                            <div class="small text-muted">{{ t.description }}</div>
                         {% endif %}
-                    </div>
+                    </td>
+                    <td>
+                        <span class="badge {{ clsStatus }} text-uppercase">{{ t.status }}</span>
+                    </td>
+                    <td>
+                        <span class="badge {{ clsPrio }}">prio {{ t.priority }}</span>
+                    </td>
+                    <td>
+                        {% if t.dueAt %}
+                            {{ t.dueAt|date('Y-m-d H:i') }}
+                            {% if overdue %}
+                                <span class="badge bg-danger ms-1">en retard</span>
+                            {% endif %}
+                        {% else %}
+                            <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end">
+                        <div class="btn-group btn-group-sm">
+                            <a class="btn btn-outline-primary" href="{{ path('task_edit', {id: t.id}) }}">Éditer</a>
+                            {% include 'task/_delete_form.html.twig' with { task: t } %}
+                        </div>
+                    </td>
+                </tr>
+            {% else %}
+                <tr>
+                    <td colspan="5" class="text-center text-muted py-5">Aucune tâche</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
 
-                    <small class="text-body-secondary d-block">
-                        {{ t.dueAt ? 'Échéance : ' ~ t.dueAt|date('Y-m-d H:i') : 'Pas d’échéance' }}
-                    </small>
-
-                    {% if t.description %}
-                        <div class="small mt-1">{{ t.description }}</div>
-                    {% endif %}
-                </div>
-
-                <div class="btn-group btn-group-sm">
-                    <a class="btn btn-outline-primary" href="{{ path('task_edit', {id: t.id}) }}">Éditer</a>
-                    {% include 'task/_delete_form.html.twig' with { task: t } %}
-                </div>
-            </li>
-        {% else %}
-            <li class="list-group-item text-center text-muted py-5">Aucune tâche</li>
-        {% endfor %}
-    </ul>
-
-    {# --- PAGINATION --- #}
     {% if pages is defined and pages > 1 %}
         <nav class="mt-3">
             <ul class="pagination">
