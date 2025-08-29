@@ -1,0 +1,8 @@
+<!doctype html><html lang="fr"><body>
+<h2>⏰ Rappel de tâche</h2>
+<p><strong>{{ title }}</strong></p>
+<ul>
+    <li>Priorité : {{ priority|upper }}</li>
+    <li>Échéance : {{ dueAt ? dueAt|date('Y-m-d H:i') : '—' }}</li>
+</ul>
+</body></html>

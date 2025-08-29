@@ -1,0 +1,12 @@
+<!doctype html><html lang="fr"><body>
+<h2>🗞️ Vos tâches du jour</h2>
+<ul>
+    {% for t in tasks %}
+        <li>
+            <strong>{{ t.title }}</strong>
+            — statut: {{ t.status }}
+            — échéance: {{ t.dueAt ? t.dueAt|date('Y-m-d H:i') : '—' }}
+        </li>
+    {% endfor %}
+</ul>
+</body></html>

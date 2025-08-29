@@ -5,15 +5,28 @@ namespace App\Controller;
 use App\Entity\Task;
 use App\Form\TaskType;
 use App\Repository\TaskRepository;
-use Doctrine\ORM\EntityManagerInterface; // ✅ bon namespace
+use App\Event\TaskChangedEvent;
+use App\Message\SendTaskCreatedEmailMessage;
+use App\Message\SendTaskReminderEmailMessage;          // 👈 NEW
+use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
+use Symfony\Contracts\Cache\ItemInterface;
+use Symfony\Contracts\Cache\TagAwareCacheInterface;
+use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
+use Symfony\Component\Messenger\MessageBusInterface;
+use Symfony\Component\Messenger\Stamp\DelayStamp;       // 👈 NEW
 
 final class TaskController extends AbstractController
 {
-    public function __construct(private readonly EntityManagerInterface $em) {} // ✅ injection par constructeur
+    public function __construct(
+        private readonly EntityManagerInterface $em,
+        private readonly TagAwareCacheInterface $cache,
+        private readonly EventDispatcherInterface $dispatcher,
+        private readonly MessageBusInterface $bus,      // 👈 Messenger injecté
+    ) {}
 
     #[Route('/', name: 'app_home', methods: ['GET'])]
     public function home(): Response
@@ -26,16 +39,43 @@ final class TaskController extends AbstractController
     {
         $this->denyAccessUnlessGranted('IS_AUTHENTICATED_FULLY');
 
+        $page   = max(1, (int) $r->query->get('page', 1));
+        $limit  = 10;
+        $user   = $this->getUser();
+
         $filters = [
-            'status' => $r->query->get('status'),
-            'q'      => $r->query->get('q'),
+            'status'  => $r->query->get('status'),
+            'q'       => $r->query->get('q'),
+            'overdue' => (bool) $r->query->get('overdue'),
+            'sort'    => $r->query->get('sort', 'dueAt'),
+            'dir'     => $r->query->get('dir', 'DESC'),
         ];
-        $page = (int) $r->query->get('page', 1);
 
-        // Assure-toi que TaskRepository::searchFor() attend bien App\Entity\User
-        $tasks = $repo->searchFor($this->getUser(), $filters, $page);
+        $keyList  = sprintf('tasks:list:u%d:p%d:%s', $user->getId(), $page, md5(json_encode($filters)));
+        $keyCount = sprintf('tasks:count:u%d:%s',    $user->getId(), md5(json_encode($filters)));
+        $tagUser  = 'tasks_u'.$user->getId();
 
-        return $this->render('task/index.html.twig', compact('tasks', 'filters'));
+        $tasks = $this->cache->get($keyList, function (ItemInterface $item) use ($repo, $user, $filters, $page, $limit, $tagUser) {
+            $item->expiresAfter(60);
+            $item->tag([$tagUser]);
+            return $repo->searchFor($user, $filters, $page, $limit);
+        });
+
+        $total = $this->cache->get($keyCount, function (ItemInterface $item) use ($repo, $user, $filters, $tagUser) {
+            $item->expiresAfter(60);
+            $item->tag([$tagUser]);
+            return $repo->countFor($user, $filters);
+        });
+
+        $pages = (int) ceil($total / $limit);
+
+        return $this->render('task/index.html.twig', [
+            'tasks'   => $tasks,
+            'filters' => $filters,
+            'page'    => $page,
+            'pages'   => $pages,
+            'total'   => $total,
+        ]);
     }
 
     #[Route('/tasks/new', name: 'task_new', methods: ['GET','POST'])]
@@ -43,14 +83,33 @@ final class TaskController extends AbstractController
     {
         $this->denyAccessUnlessGranted('IS_AUTHENTICATED_FULLY');
 
-        $task = new Task(); // valeurs par défaut dans l'entité: priority=low, status=todo, createdAt auto
+        $task = new Task();
         $form = $this->createForm(TaskType::class, $task);
         $form->handleRequest($request);
 
         if ($form->isSubmitted() && $form->isValid()) {
-            $task->setOwner($this->getUser()); // 🔒 associer au propriétaire connecté
+            $task->setOwner($this->getUser());
             $this->em->persist($task);
             $this->em->flush();
+
+            // 📨 Notification "créée"
+            $this->bus->dispatch(new SendTaskCreatedEmailMessage($task->getId()));
+
+            // ⏰ Rappel 24h avant l’échéance (ou immédiat si < 24h)
+            $dueAt = $task->getDueAt();
+            if ($dueAt instanceof \DateTimeInterface) {
+                $now      = new \DateTimeImmutable();
+                $targetTs = $dueAt->getTimestamp() - 24 * 3600;
+                $delayMs  = max(0, ($targetTs - $now->getTimestamp()) * 1000);
+
+                $this->bus->dispatch(
+                    new SendTaskReminderEmailMessage($task->getId()),
+                    [ new DelayStamp($delayMs) ]
+                );
+            }
+
+            // 🛎️ Invalidation cache
+            $this->dispatcher->dispatch(new TaskChangedEvent($this->getUser()->getId()));
 
             $this->addFlash('success', 'Tâche créée ✅');
             return $this->redirectToRoute('task_index');
@@ -61,8 +120,8 @@ final class TaskController extends AbstractController
         ]);
     }
 
-    #[Route('/tasks/{id}/edit', name: 'task_edit')]
-    public function edit(Task $task, Request $request, EntityManagerInterface $em): Response
+    #[Route('/tasks/{id}/edit', name: 'task_edit', methods: ['GET','POST'])]
+    public function edit(Task $task, Request $request): Response
     {
         $this->denyAccessUnlessGranted('IS_AUTHENTICATED_FULLY');
         if ($task->getOwner() !== $this->getUser()) {
@@ -73,7 +132,24 @@ final class TaskController extends AbstractController
         $form->handleRequest($request);
 
         if ($form->isSubmitted() && $form->isValid()) {
-            $em->flush();
+            $this->em->flush();
+
+            // ⏰ Reprogramme le rappel (au cas où la date a changé)
+            $dueAt = $task->getDueAt();
+            if ($dueAt instanceof \DateTimeInterface) {
+                $now      = new \DateTimeImmutable();
+                $targetTs = $dueAt->getTimestamp() - 24 * 3600;
+                $delayMs  = max(0, ($targetTs - $now->getTimestamp()) * 1000);
+
+                $this->bus->dispatch(
+                    new SendTaskReminderEmailMessage($task->getId()),
+                    [ new DelayStamp($delayMs) ]
+                );
+            }
+
+            // 🛎️ Invalidation cache
+            $this->dispatcher->dispatch(new TaskChangedEvent($this->getUser()->getId()));
+
             $this->addFlash('success', 'Tâche mise à jour ✅');
             return $this->redirectToRoute('task_index');
         }
@@ -82,16 +158,20 @@ final class TaskController extends AbstractController
     }
 
     #[Route('/tasks/{id}', name: 'task_delete', methods: ['POST'])]
-    public function delete(Task $task, Request $request, EntityManagerInterface $em): Response
+    public function delete(Task $task, Request $request): Response
     {
         $this->denyAccessUnlessGranted('IS_AUTHENTICATED_FULLY');
         if ($task->getOwner() !== $this->getUser()) {
             throw $this->createAccessDeniedException();
         }
 
-        if ($this->isCsrfTokenValid('delete_task_'.$task->getId(), $request->request->get('_token'))) {
-            $em->remove($task);
-            $em->flush();
+        if ($this->isCsrfTokenValid('delete_task_'.$task->getId(), (string) $request->request->get('_token'))) {
+            $this->em->remove($task);
+            $this->em->flush();
+
+            // 🛎️ Invalidation cache
+            $this->dispatcher->dispatch(new TaskChangedEvent($this->getUser()->getId()));
+
             $this->addFlash('success', 'Tâche supprimée 🗑️');
         }
         return $this->redirectToRoute('task_index');

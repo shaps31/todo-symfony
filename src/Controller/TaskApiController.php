@@ -1,6 +1,7 @@
 <?php
 namespace App\Controller;
 
+use App\Entity\Task;
 use App\Repository\TaskRepository;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -15,25 +16,42 @@ class TaskApiController extends AbstractController
     {
         $this->denyAccessUnlessGranted('IS_AUTHENTICATED_FULLY');
 
-        $filters = ['status'=>$r->query->get('status'), 'q'=>$r->query->get('q')];
-        $page = (int) $r->query->get('page', 1);
-        $limit = 10;
+        $page  = max(1, (int) $r->query->get('page', 1));
+        $limit = max(1, min(100, (int) $r->query->get('limit', 10)));
+
+        $filters = [
+            'status'  => $r->query->get('status'),
+            'q'       => $r->query->get('q'),
+            'overdue' => filter_var($r->query->get('overdue'), FILTER_VALIDATE_BOOLEAN),
+            'sort'    => $r->query->get('sort', 'dueAt'),   // dueAt|createdAt
+            'dir'     => strtoupper($r->query->get('dir', 'DESC')), // ASC|DESC
+        ];
 
         $items = $repo->searchFor($this->getUser(), $filters, $page, $limit);
 
-        // petit map => évite Serializer Groups pour l’instant
-        $data = array_map(fn($t) => [
-            'id'       => $t->getId(),
-            'title'    => $t->getTitle(),
-            'status'   => $t->getStatus(),
-            'priority' => $t->getPriority(),
-            'dueAt'    => $t->getDueAt()?->format(DATE_ATOM),
-        ], $items);
+        $data = array_map(
+            fn(Task $t) => [
+                'id'       => $t->getId(),
+                'title'    => $t->getTitle(),
+                'status'   => $t->getStatus(),
+                'priority' => $t->getPriority(),
+                'dueAt'    => $t->getDueAt()?->format(DATE_ATOM),
+                'createdAt' => $t->getCreatedAt()->format(DATE_ATOM),
+                'updatedAt' => $t->getUpdatedAt()?->format(DATE_ATOM),
+            ],
+            $items
+        );
 
-        // total pour pagination
         $total = $repo->countFor($this->getUser(), $filters);
         $pages = (int) ceil($total / $limit);
 
-        return $this->json(['items'=>$data, 'page'=>$page, 'pages'=>$pages, 'total'=>$total]);
+        return $this->json([
+            'items'   => $data,
+            'page'    => $page,
+            'pages'   => $pages,
+            'limit'   => $limit,
+            'total'   => $total,
+            'filters' => $filters,
+        ]);
     }
 }

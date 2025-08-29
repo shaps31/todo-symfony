@@ -1,0 +1,6 @@
+<h2>Nouvelle tâche créée</h2>
+<p><strong>{{ title }}</strong></p>
+<ul>
+    <li>Priorité : {{ priority|upper }}</li>
+    <li>Deadline : {{ dueAt ? dueAt|date('Y-m-d H:i') : '—' }}</li>
+</ul>
