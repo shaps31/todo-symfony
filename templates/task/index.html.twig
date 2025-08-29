@@ -1,6 +1,52 @@
-{# templates/task/index.html.twig #}
 {% extends 'base.html.twig' %}
 {% block body %}
-    <h1>Mes tâches</h1>
-    <p>(placeholder) La liste arrive…</p>
+    <h1 class="mb-3">Mes tâches</h1>
+
+    <form method="get" class="row g-2 align-items-center mb-3">
+        <div class="col-auto">
+            <input name="q" class="form-control" placeholder="Recherche" value="{{ filters.q }}">
+        </div>
+        <div class="col-auto">
+            <select name="status" class="form-select">
+                <option value="">--</option>
+                {% for s in ['todo','doing','done'] %}
+                    <option value="{{ s }}" {{ s==filters.status?'selected':'' }}>{{ s }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-auto">
+            <a class="btn btn-success" href="{{ path('task_new') }}">+ Créer une tâche</a>
+
+            <button class="btn btn-primary">Filtrer</button>
+        </div>
+    </form>
+
+    <ul class="list-group">
+        {% for t in tasks %}
+            <li class="list-group-item">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <strong>{{ t.title }}</strong>
+                        <span class="badge bg-secondary ms-2">{{ t.status }}</span>
+                        {% if t.dueAt and t.status!='done' and t.dueAt|date('U') < 'now'|date('U') %}
+                            <span class="badge bg-danger ms-1">en retard</span>
+                        {% endif %}
+                        <div class="small text-muted">{{ t.description|default('') }}</div>
+                    </div>
+                    <div class="text-nowrap">
+                        <a class="btn btn-sm btn-outline-primary" href="{{ path('task_edit', {id: t.id}) }}">Éditer</a>
+                        {% include 'task/_delete_form.html.twig' with { task: t } %}
+
+                        <form method="post" action="{{ path('task_delete', {id: t.id}) }}" class="d-inline"
+                              onsubmit="return confirm('Supprimer cette tâche ?');">
+                            <input type="hidden" name="_token" value="{{ csrf_token('delete_task_' ~ t.id) }}">
+                            <button class="btn btn-sm btn-outline-danger">Supprimer</button>
+                        </form>
+                    </div>
+                </div>
+            </li>
+        {% else %}
+            <li class="list-group-item">Aucune tâche</li>
+        {% endfor %}
+    </ul>
 {% endblock %}

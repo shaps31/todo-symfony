@@ -1,0 +1,9 @@
+{% extends 'base.html.twig' %}
+
+{% block body %}
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1>Créer une tâche</h1>
+    </div>
+
+    {% include 'task/_form.html.twig' with { form: form, submit_label: 'Créer' } %}
+{% endblock %}
